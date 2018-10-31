@@ -4,8 +4,8 @@ from twisted.internet import reactor
 import requests
 from datetime import datetime
 import logging
+from august.api import Api 
 import august
-from august.authenticator import Authenticator, AuthenticationState
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -22,10 +22,7 @@ TOKEN = os.environ['AUGUST_TOKEN']
 AUTO_LOCK = True if 'AUTO_LOCK' in os.environ else False
 AUTO_LOCK_THRESHOLD = int(os.environ.get('AUTO_LOCK_THERESHOLD', 7200))
 
-api = august.api.Api(timeout=20)
-# authenticator = Authenticator(api, "email", 'login_email', "password",
-#                               access_token_cache_file="token-cache")
-
+api = Api(timeout=20)
 
 # Override timestamp function returned for easier calculations
 def epoch_to_datetime(epoch):
@@ -34,12 +31,12 @@ august.activity.epoch_to_datetime = epoch_to_datetime
 
 def check_door(token):
 
-
     # Get house assuming account only has 1 house
     house = api.get_houses(token)[0]
 
     # Get lock ID assuming only 1 lock
     lock = api.get_locks(token)[0]
+    lock_id = lock.device_id
 
     activities = api.get_house_activities(token, house['HouseID'])
 
@@ -55,22 +52,23 @@ def check_door(token):
 
     # Check if door has been unlocked for too long
     if time_diff > (ALERT_THRESHOLD) and last_action == 'unlock' and str(lock_status) == 'LockStatus.UNLOCKED':
-        logger.info('door left unlocked. sending alert')
+        logger.info(f'door left unlocked for {time_diff} seconds. sending alert')
         try:
             requests.post(ALERT_ENDPOINT)
-        except Exception as e:
+        except Exception:
             logging.exception('exception making post to alert')
-        if time_diff > AUTO_LOCK_THRESHOLD:
-            logger.info('auto locking door')
+        if AUTO_LOCK and time_diff > AUTO_LOCK_THRESHOLD:
+            logger.warning('auto locking door')
+            api.lock(token, lock_id)
     else:
         logger.debug(f'lock status is {lock_status} for {time_diff} seconds')
 
 
+if __name__ == '__main__':
 
-logger.debug('starting...')
-l = task.LoopingCall(check_door, (TOKEN))
-l.start(30)
+    # killer = GracefulKiller()
+    logger.debug('starting...')
+    l = task.LoopingCall(check_door, (TOKEN))
+    l.start(30)
 
-reactor.run()
-
-
+    reactor.run()

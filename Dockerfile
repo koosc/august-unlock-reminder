@@ -10,4 +10,4 @@ RUN pip install -r requirements.txt
 
 COPY .  .
 
-CMD python3 watch_door.py
+CMD ["python3", "watch_door.py"]
