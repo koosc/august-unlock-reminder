@@ -18,7 +18,6 @@ ALERT_THRESHOLD = int(os.environ.get('ALERT_THRESHOLD', 300))
 ALERT_ENDPOINT = os.environ['ALERT_ENDPOINT']
 TOKEN = os.environ['AUGUST_TOKEN']
 
-
 AUTO_LOCK = True if 'AUTO_LOCK' in os.environ else False
 AUTO_LOCK_THRESHOLD = int(os.environ.get('AUTO_LOCK_THERESHOLD', 7200))
 
