@@ -17,6 +17,7 @@ logger.setLevel(logging.DEBUG)
 ALERT_THRESHOLD = int(os.environ.get('ALERT_THRESHOLD', 300))
 ALERT_ENDPOINT = os.environ['ALERT_ENDPOINT']
 TOKEN = os.environ['AUGUST_TOKEN']
+ALERT_COOLDOWN = os.environ.get('ALERT_COOLDOWN', 600) # time to wait before triggering alert again
 
 AUTO_LOCK = True if 'AUTO_LOCK' in os.environ else False
 AUTO_LOCK_THRESHOLD = int(os.environ.get('AUTO_LOCK_THERESHOLD', 7200))
@@ -29,6 +30,7 @@ def epoch_to_datetime(epoch):
 august.activity.epoch_to_datetime = epoch_to_datetime
 
 def check_door(token):
+    global last_alert_time
 
     # Get house assuming account only has 1 house
     house = api.get_houses(token)[0]
@@ -53,21 +55,26 @@ def check_door(token):
     if time_diff > (ALERT_THRESHOLD) and last_action == 'unlock' and str(lock_status) == 'LockStatus.UNLOCKED':
         logger.info(f'door left unlocked for {time_diff} seconds. sending alert')
         try:
-            requests.post(ALERT_ENDPOINT)
-        except Exception:
-            logging.exception('exception making post to alert')
+            if (current_time - last_alert_time) > ALERT_COOLDOWN:
+                requests.post(ALERT_ENDPOINT, timeout=10)
+                last_alert_time = current_time
+            else:
+                logger.info(f'no alert sent. {last_alert_time} seconds since last alert')
+        except requests.exceptions.RequestException:
+            logger.exception('exception posting alert')
+            
         if AUTO_LOCK and time_diff > AUTO_LOCK_THRESHOLD:
             logger.warning('auto locking door')
             api.lock(token, lock_id)
     else:
         logger.debug(f'lock status is {lock_status} for {time_diff} seconds')
 
-
 if __name__ == '__main__':
 
-    # killer = GracefulKiller()
     logger.debug('starting...')
     l = task.LoopingCall(check_door, (TOKEN))
     l.start(30)
+
+    last_alert_time = 0
 
     reactor.run()
