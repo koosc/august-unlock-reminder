@@ -41,25 +41,26 @@ def check_door(token):
 
     activities = api.get_house_activities(token, house['HouseID'])
 
-
     last_activity = activities[0]
-    last_time = last_activity.activity_end_time
+    last_time = last_activity.activity_end_time / 1000 # convert to seconds
     last_action = last_activity.action
 
-    current_time = datetime.now().timestamp() * 1000
+    current_time = datetime.now().timestamp()
     lock_status = api.get_lock_status(token, lock.device_id)
 
-    time_diff = (current_time - last_time) / 1000
+    time_diff = (current_time - last_time)
 
     # Check if door has been unlocked for too long
     if time_diff > (ALERT_THRESHOLD) and last_action == 'unlock' and str(lock_status) == 'LockStatus.UNLOCKED':
-        logger.info(f'door left unlocked for {time_diff} seconds. sending alert')
         try:
             if (current_time - last_alert_time) > ALERT_COOLDOWN:
-                requests.post(ALERT_ENDPOINT, timeout=10)
+                logger.info(f'door left unlocked for {time_diff} seconds. sending alert')
+                response = requests.post(ALERT_ENDPOINT, timeout=10)
+                response.raise_for_status()
+
                 last_alert_time = current_time
             else:
-                logger.info(f'no alert sent. {last_alert_time} seconds since last alert')
+                logger.info(f'no alert sent. {current_time - last_alert_time} seconds since last alert')
         except requests.exceptions.RequestException:
             logger.exception('exception posting alert')
             
@@ -71,10 +72,12 @@ def check_door(token):
 
 if __name__ == '__main__':
 
+    # start last alert to 0 so first will trigger
+    last_alert_time = 0
+
     logger.debug('starting...')
     l = task.LoopingCall(check_door, (TOKEN))
-    l.start(30)
 
-    last_alert_time = 0
+    l.start(30)
 
     reactor.run()
